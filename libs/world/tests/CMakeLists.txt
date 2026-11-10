@@ -18,8 +18,15 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(blit_world_tests
 	registry_test.cpp
+	value_test.cpp
 )
 target_link_libraries(blit_world_tests PRIVATE BlitWorld GTest::gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(blit_world_tests DISCOVERY_MODE PRE_TEST NO_PRETTY_VALUES)
+
+# Its own program, not a GoogleTest case: it replaces global operator new and
+# delete, which has to account for every allocation in the binary.
+add_executable(blit_world_alloc_check no_allocation_check.cpp)
+target_link_libraries(blit_world_alloc_check PRIVATE BlitWorld)
+add_test(NAME NoAllocation.LookupAndValueConversion COMMAND blit_world_alloc_check)

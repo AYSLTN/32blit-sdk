@@ -59,6 +59,35 @@ namespace sdk {
     uint8_t field_count;
   };
 
+  /// Longest text any field value needs, including the terminator: a full
+  /// string field, or a float's shortest round-trip form.
+  constexpr int max_value_text = 32;
+
+  /**
+   * \brief Read a field value from text.
+   *
+   * Accepts `true`, `false`, `1` and `0` for Bool, base-ten digits for the
+   * integers, and any form `std::from_chars` reads for Float. The whole of
+   * `text` must be the value: no leading or trailing spaces, and nothing
+   * after it. Strings must fit in string_field_size including the terminator.
+   *
+   * \param dst Storage for the field's own type, at least as large as it.
+   * \return false if the text isn't a valid value of this type, leaving `dst` untouched.
+   */
+  bool parse_value(FieldType type, const char *text, void *dst);
+
+  /**
+   * \brief Write a field value as text, in the shortest form that reads back
+   *        as the same value.
+   *
+   * \param buf Always terminated when this succeeds; needs max_value_text to fit any value.
+   * \return Characters written, not counting the terminator, or -1 if `buf` is too small.
+   */
+  int format_value(FieldType type, const void *src, char *buf, int cap);
+
+  /** \brief The name of a field type, for error messages: "bool", "int32", ... */
+  const char *field_type_name(FieldType type);
+
   /** \brief Find a registered component by name, or nullptr. */
   const ComponentInfo *find_component(const char *name);
 
