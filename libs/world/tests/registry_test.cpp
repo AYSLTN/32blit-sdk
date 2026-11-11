@@ -45,7 +45,6 @@ TEST(Registry, FindsComponentByName) {
   ASSERT_NE(transform, nullptr);
   EXPECT_STREQ(transform->name, "Transform");
   EXPECT_EQ(transform->size, sizeof(Transform));
-  EXPECT_EQ(transform->align, alignof(Transform));
   EXPECT_EQ(transform->field_count, 3);
 }
 

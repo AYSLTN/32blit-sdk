@@ -137,9 +137,9 @@ namespace sdk {
 
   namespace detail {
 
-    ComponentRegistrar::ComponentRegistrar(const char *name, uint16_t size, uint16_t align,
+    ComponentRegistrar::ComponentRegistrar(const char *name, uint16_t size,
                                            const FieldInfo *fields, uint8_t field_count)
-      : info{name, registry_count, size, align, 0, fields, field_count} {
+      : info{name, registry_count, size, fields, field_count} {
 
       if(registry_count == max_components)
         return;  // over the limit: reported by find_component failing, not by crashing here

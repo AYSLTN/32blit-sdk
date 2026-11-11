@@ -52,9 +52,7 @@ namespace sdk {
   struct ComponentInfo {
     const char *name;
     uint16_t id;        ///< Registration order, stable within one program.
-    uint16_t size;      ///< sizeof the struct.
-    uint16_t align;     ///< alignof the struct.
-    uint16_t capacity;  ///< Pool size; 0 means "the default". Set by the pools (PR 1.2).
+    uint16_t size;      ///< sizeof the struct, for copying one without knowing its type.
     const FieldInfo *fields;
     uint8_t field_count;
   };
@@ -117,7 +115,7 @@ namespace sdk {
     /** \brief Adds one component to the registry when its program starts. */
     struct ComponentRegistrar {
       ComponentInfo info;
-      ComponentRegistrar(const char *name, uint16_t size, uint16_t align,
+      ComponentRegistrar(const char *name, uint16_t size,
                          const FieldInfo *fields, uint8_t field_count);
     };
   }
@@ -173,6 +171,6 @@ namespace sdk {
     SDK_FOR_EACH_FIELD(SDK_FIELD_INFO, T, __VA_ARGS__)                                         \
   };                                                                                           \
   static const ::sdk::detail::ComponentRegistrar sdk_registrar_##T {                           \
-    #T, sizeof(T), alignof(T), sdk_fields_##T,                                                 \
+    #T, sizeof(T), sdk_fields_##T,                                                             \
     static_cast<uint8_t>(sizeof(sdk_fields_##T) / sizeof(::sdk::FieldInfo))                    \
   }
