@@ -59,7 +59,9 @@ if(EMSCRIPTEN)
 else()
 
 	# fallback guess for SDL location on Windows
-	if(WIN32 AND NOT SDL2_DIR AND 32BLIT_DIR)
+	# MSVC only: vs/sdl holds the -VC builds, which MinGW cannot link against.
+	# A native MinGW build (MSYS2) finds its own SDL2 through find_package.
+	if(MSVC AND NOT SDL2_DIR AND 32BLIT_DIR)
 		set(SDL2_DIR "${32BLIT_DIR}/vs/sdl")
 	endif()
 
