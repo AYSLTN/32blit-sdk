@@ -8,6 +8,7 @@
 #include "registry.hpp"
 
 #include <charconv>
+#include <cmath>
 #include <cstring>
 
 namespace sdk {
@@ -77,7 +78,24 @@ namespace sdk {
 
       case FieldType::Int32:  return parse_number<int32_t>(text, dst);
       case FieldType::UInt32: return parse_number<uint32_t>(text, dst);
-      case FieldType::Float:  return parse_number<float>(text, dst);
+      case FieldType::Float: {
+        float value = 0.0f;
+
+        if(!parse_number<float>(text, &value))
+          return false;
+
+        // std::from_chars reads "inf" and "nan", and a game has no use for
+        // either: a nan spreads through every sum it touches and makes
+        // comparisons fail silently. Refuse them here, where a scene file or a
+        // console line can still be pointed at, rather than at the frame where
+        // a sprite vanishes. format_value() still writes them, so a field that
+        // has already gone wrong is visible in a dump and refused on reload.
+        if(!std::isfinite(value))
+          return false;
+
+        memcpy(dst, &value, sizeof(value));
+        return true;
+      }
 
       case FieldType::String: {
         const size_t length = strlen(text);

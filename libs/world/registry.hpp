@@ -65,9 +65,11 @@ namespace sdk {
    * \brief Read a field value from text.
    *
    * Accepts `true`, `false`, `1` and `0` for Bool, base-ten digits for the
-   * integers, and any form `std::from_chars` reads for Float. The whole of
-   * `text` must be the value: no leading or trailing spaces, and nothing
-   * after it. Strings must fit in string_field_size including the terminator.
+   * integers, and any finite form `std::from_chars` reads for Float; `inf` and
+   * `nan` are refused, because no game value is either and a nan spreads
+   * silently. The whole of `text` must be the value: no leading or trailing
+   * spaces, and nothing after it. Strings must fit in string_field_size
+   * including the terminator.
    *
    * \param dst Storage for the field's own type, at least as large as it.
    * \return false if the text isn't a valid value of this type, leaving `dst` untouched.

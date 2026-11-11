@@ -154,6 +154,25 @@ TEST(Value, RejectsTextThatIsNotAValue) {
   EXPECT_STREQ(name, "kept") << "too long must fail, not truncate";
 }
 
+TEST(Value, RefusesInfinityAndNotANumber) {
+  // std::from_chars reads both; a game has no use for either, and a nan
+  // spreads through every sum it touches, so they are refused where a scene
+  // file or console line can still be pointed at.
+  float number = 1.0f;
+
+  for(const char *text : {"inf", "-inf", "infinity", "nan", "NaN", "-nan"})
+    EXPECT_FALSE(sdk::parse_value(sdk::FieldType::Float, text, &number)) << "text " << text;
+
+  EXPECT_FLOAT_EQ(number, 1.0f) << "a refused value must leave the field alone";
+
+  // writing them still works, so a field that has already gone wrong shows up
+  // in a dump, and the scene file it lands in is then refused on reload
+  const float infinity = std::numeric_limits<float>::infinity();
+  char buf[sdk::max_value_text];
+  EXPECT_GT(sdk::format_value(sdk::FieldType::Float, &infinity, buf, sizeof(buf)), 0);
+  EXPECT_FALSE(sdk::parse_value(sdk::FieldType::Float, buf, &number));
+}
+
 TEST(Value, ReportsWhenTheBufferIsTooSmall) {
   const int32_t value = -12345;
   char buf[4] = {'#', '#', '#', '#'};
