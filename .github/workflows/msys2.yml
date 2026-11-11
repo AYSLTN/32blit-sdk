@@ -1,0 +1,63 @@
+# Builds the SDK and the examples natively on Windows with MSYS2 (UCRT64, GCC).
+#
+# This is the setup we point game developers at: VS Code plus MSYS2 plus the
+# C/C++ extension, which is what Microsoft's own VS Code C++ tutorial walks
+# through, and a far smaller install than Visual Studio. The CMake workflow's
+# MinGW job cross-compiles from Linux, which does not exercise the same paths,
+# so without this job the setup we document would break without anyone noticing.
+name: MSYS2
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+jobs:
+  build:
+    name: MSYS2 UCRT64
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - name: Checkout 32Blit SDK
+      uses: actions/checkout@v7
+
+    - name: Checkout Examples
+      uses: actions/checkout@v7
+      with:
+        repository: 32blit/32blit-examples
+        path: examples
+
+    - name: Set up MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: >-
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-ninja
+          mingw-w64-ucrt-x86_64-SDL2
+          mingw-w64-ucrt-x86_64-SDL2_image
+          mingw-w64-ucrt-x86_64-SDL2_net
+          mingw-w64-ucrt-x86_64-python
+          mingw-w64-ucrt-x86_64-python-pip
+
+    # bitstring 5 breaks the 32blit tools, which CMake runs for assets and metadata.
+    # --break-system-packages: MSYS2's python marks itself externally managed.
+    - name: Install the 32blit tools
+      run: python -m pip install --break-system-packages 32blit "bitstring<5" requests
+
+    - uses: ammaraskar/gcc-problem-matcher@master
+
+    # No SDL2_DIR: find_package picks up the pacman SDL2, which is the path a
+    # developer following our setup guide takes.
+    - name: Configure
+      run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: cmake --build build -j 2
