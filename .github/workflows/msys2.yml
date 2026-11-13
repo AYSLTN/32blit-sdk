@@ -44,20 +44,34 @@ jobs:
           mingw-w64-ucrt-x86_64-SDL2
           mingw-w64-ucrt-x86_64-SDL2_image
           mingw-w64-ucrt-x86_64-SDL2_net
-          mingw-w64-ucrt-x86_64-python
-          mingw-w64-ucrt-x86_64-python-pip
 
-    # bitstring 5 breaks the 32blit tools, which CMake runs for assets and metadata.
-    # --break-system-packages: MSYS2's python marks itself externally managed.
+    # Asset tools run on the host, not with the game's compiler. PyPI native
+    # wheels target Windows CPython, not MSYS2's mingw Python ABI.
+    - name: Set up host Python
+      id: python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    # Keep pip packages out of the system environment. bitstring 5 breaks
+    # the 32blit tools, which CMake runs for assets and metadata.
     - name: Install the 32blit tools
-      run: python -m pip install --break-system-packages 32blit "bitstring<5" requests
+      shell: pwsh
+      env:
+        HOST_PYTHON: ${{ steps.python.outputs.python-path }}
+      run: |
+        & $env:HOST_PYTHON -m venv .venv
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & ./.venv/Scripts/python.exe -m pip install 32blit "bitstring<5" requests
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & ./.venv/Scripts/python.exe -m ttblit version
 
     - uses: ammaraskar/gcc-problem-matcher@master
 
     # No SDL2_DIR: find_package picks up the pacman SDL2, which is the path a
     # developer following our setup guide takes.
     - name: Configure
-      run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPython_EXECUTABLE="$(cygpath -m "$PWD/.venv/Scripts/python.exe")"
 
     - name: Build
       run: cmake --build build -j 2
