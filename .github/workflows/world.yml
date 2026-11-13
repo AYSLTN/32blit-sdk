@@ -65,7 +65,7 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - name: Configure
-      run: cmake -S libs/world -B build.world -DBLIT_WORLD_TESTS=ON -DCMAKE_CXX_FLAGS=/W4
+      run: cmake -S libs/world -B build.world -DBLIT_WORLD_TESTS=ON "-DCMAKE_CXX_FLAGS=/W4 /EHsc"
     - name: Build
       run: cmake --build build.world --config ${{ matrix.config }} --parallel 2
     - name: Test
