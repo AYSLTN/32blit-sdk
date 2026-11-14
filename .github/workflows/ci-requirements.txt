@@ -1,0 +1,8 @@
+# Python tools used by CI, pinned so CI and laptops run the same versions.
+# Install locally with: python -m pip install -r .github/ci-requirements.txt
+# asset/metadata tools the SDK's CMake calls
+32blit==0.7.4
+# 32blit 0.7.4 imports ConstBitStream, which bitstring 5.0 removed
+bitstring<5
+# same formatter version everywhere; a different version can format differently
+clang-format==23.1.3
