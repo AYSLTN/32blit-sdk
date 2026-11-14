@@ -1,0 +1,173 @@
+# SPS CI: checks for our own code (32blit-linux), next to upstream's cmake.yml.
+#
+# Four independent jobs run in parallel, so the slowest one sets the total time:
+#   format  - clang-format check on 32blit-linux            (~20 s)
+#   tests   - port + GoogleTest unit tests under ASan/UBSan (ctest)
+#   build   - port + all 32blit examples in Release
+#   docs    - Doxygen HTML for 32blit-linux, kept as an artifact
+#
+# Every build step is one CMake preset (CMakePresets.json), so anyone can run
+# exactly what CI runs on their own machine:
+#   cmake --workflow --preset port-asan
+#   cmake --workflow --preset port-release
+
+name: SPS CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch or PR cancels the run that's still going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# CI only needs to read the code.
+permissions:
+  contents: read
+
+env:
+  # CMake reads these as default compiler launchers, so every compile goes through ccache.
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 500M
+
+jobs:
+  format:
+    name: Format (clang-format)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .github/ci-requirements.txt
+
+      - name: Install pinned tools
+        run: pip install -r .github/ci-requirements.txt
+
+      - name: Check 32blit-linux formatting
+        # Only our folder: upstream 32blit files keep their own style.
+        # To fix locally: clang-format -i 32blit-linux/*.cpp 32blit-linux/*.hpp 32blit-linux/tests/*.cpp
+        run: git ls-files '32blit-linux/*.cpp' '32blit-linux/*.hpp' | xargs clang-format --dry-run --Werror
+
+  tests:
+    name: Unit tests (ASan + UBSan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .github/ci-requirements.txt
+
+      - name: Install tools
+        run: |
+          pip install -r .github/ci-requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ccache ninja-build
+
+      - uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ccache-tests-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ccache-tests-${{ github.ref }}
+            ccache-tests-
+
+      # Printed once so a failing run shows exactly which versions it used.
+      - name: Tool versions
+        run: |
+          cmake --version | head -1
+          ninja --version
+          g++ --version | head -1
+          ccache --version | head -1
+
+      - name: Configure, build and test
+        run: cmake --workflow --preset port-asan
+
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats
+
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-log
+          path: build/port-asan/Testing/Temporary/LastTest.log
+          retention-days: 7
+
+  build:
+    name: Port + examples (Release)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # The SDK's root CMakeLists builds ./examples when it exists.
+      - uses: actions/checkout@v7
+        with:
+          repository: 32blit/32blit-examples
+          path: examples
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .github/ci-requirements.txt
+
+      - name: Install tools
+        run: |
+          pip install -r .github/ci-requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ccache ninja-build
+
+      - uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ccache-build-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ccache-build-${{ github.ref }}
+            ccache-build-
+
+      - name: Configure and build
+        run: cmake --workflow --preset port-release
+
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats
+
+  docs:
+    name: Docs (Doxygen)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends doxygen
+
+      - name: Build docs
+        # Fails on broken docs (e.g. a \param that doesn't match the code).
+        # Doxygen creates only the last folder of OUTPUT_DIRECTORY, so make build/docs first.
+        run: |
+          mkdir -p build/docs
+          doxygen 32blit-linux/Doxyfile
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: build/docs/html
+          retention-days: 14
