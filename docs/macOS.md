@@ -41,10 +41,6 @@ brew install freetype
 
 Then install 32blit tools itself.
 
-```
-pip3 install 32blit
-```
-
 ```shell
 pip3 install 32blit construct "bitstring<5"
 ```
