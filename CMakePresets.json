@@ -1,0 +1,61 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "port-asan",
+      "displayName": "32blit-linux + unit tests, AddressSanitizer and UBSan (Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/port-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "32BLIT_LINUX": "ON",
+        "BLIT_LINUX_TESTS": "ON",
+        "CMAKE_C_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    },
+    {
+      "name": "port-release",
+      "displayName": "32blit-linux, Release (builds ./examples too if it's checked out)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/port-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "32BLIT_LINUX": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "port-asan", "configurePreset": "port-asan" },
+    { "name": "port-release", "configurePreset": "port-release" }
+  ],
+  "testPresets": [
+    {
+      "name": "port-asan",
+      "configurePreset": "port-asan",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "port-asan",
+      "displayName": "Configure, build and run the unit tests with sanitizers",
+      "steps": [
+        { "type": "configure", "name": "port-asan" },
+        { "type": "build", "name": "port-asan" },
+        { "type": "test", "name": "port-asan" }
+      ]
+    },
+    {
+      "name": "port-release",
+      "displayName": "Configure and build the port (and examples) in Release",
+      "steps": [
+        { "type": "configure", "name": "port-release" },
+        { "type": "build", "name": "port-release" }
+      ]
+    }
+  ]
+}
