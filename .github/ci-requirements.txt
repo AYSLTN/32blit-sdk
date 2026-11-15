@@ -1,0 +1,262 @@
+# SPS Linux-port CI. Lives alongside the upstream workflows; does not replace them.
+# Jobs only run when the related files change. Build/test jobs still compile and
+# test the affected component as a whole, not just the changed source file.
+name: SPS CI
+
+on:
+  push:
+    branches: [master, linux-port]
+  pull_request:
+  workflow_dispatch:
+
+# paths-filter reads the list of changed files on pull requests.
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: sps-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  CMAKE_BUILD_PARALLEL_LEVEL: '2'
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 500M
+
+jobs:
+  # Runs first; all other jobs use its results to avoid unrelated work.
+  changes:
+    name: Find changed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      format_sources: ${{ steps.filter.outputs.format_sources }}
+      format_files: ${{ steps.filter.outputs.format_sources_files }}
+      format_config: ${{ steps.filter.outputs.format_config }}
+      tests: ${{ steps.filter.outputs.tests }}
+      build: ${{ steps.filter.outputs.build }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Find relevant changes
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          # Pushes compare to the pre-push commit; PRs compare to their base.
+          base: ${{ github.event.before || github.ref_name }}
+          list-files: json
+          predicate-quantifier: some-with-excludes
+          filters: |
+            # Only existing, added/modified C++ source should be formatted.
+            format_sources:
+              - added|modified: '32blit-linux/**/*.cpp'
+              - added|modified: '32blit-linux/**/*.hpp'
+              - added|modified: '32blit-linux/**/*.c'
+              - added|modified: '32blit-linux/**/*.h'
+            # If the style changes, recheck all tracked C/C++ source files.
+            format_config:
+              - '32blit-linux/.clang-format'
+            # Tests include port code, test files, and shared SDK dependencies.
+            tests:
+              - '32blit-linux/**'
+              - '!32blit-linux/Doxyfile'
+              - '!32blit-linux/.clang-format'
+              - '!32blit-linux/**/*.md'
+              - '32blit/**'
+              - '3rd-party/**'
+              - 'launcher-shared/**'
+              - 'utilities/**'
+              - '32blit-config.cmake'
+              - 'CMakeLists.txt'
+              - 'CMakePresets.json'
+              - '.github/ci-requirements.txt'
+              - '.github/workflows/sps-ci.yml'
+            # Changes to unit tests alone do not require building every example.
+            build:
+              - '32blit-linux/**'
+              - '!32blit-linux/tests/**'
+              - '!32blit-linux/Doxyfile'
+              - '!32blit-linux/.clang-format'
+              - '!32blit-linux/**/*.md'
+              - '32blit/**'
+              - '3rd-party/**'
+              - 'launcher-shared/**'
+              - 'utilities/**'
+              - '32blit-config.cmake'
+              - 'CMakeLists.txt'
+              - 'CMakePresets.json'
+              - '.github/ci-requirements.txt'
+              - '.github/workflows/sps-ci.yml'
+            docs:
+              - '32blit-linux/**'
+              - '!32blit-linux/tests/**'
+              - '!32blit-linux/.clang-format'
+              - '32blit-linux/Doxyfile'
+              - '.github/workflows/sps-ci.yml'
+
+  format:
+    name: Format (clang-format)
+    needs: changes
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          needs.changes.outputs.format_sources == 'true' ||
+          needs.changes.outputs.format_config == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .github/ci-requirements.txt
+      - name: Install pinned formatter
+        run: python -m pip install -r .github/ci-requirements.txt
+
+      - name: Check changed C/C++ files
+        env:
+          FORMAT_FILES_JSON: ${{ needs.changes.outputs.format_files }}
+          STYLE_CHANGED: ${{ needs.changes.outputs.format_config }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          if not Path('32blit-linux/.clang-format').is_file():
+              raise SystemExit('Missing team style: 32blit-linux/.clang-format')
+
+          extensions = ('.cpp', '.hpp', '.c', '.h')
+          if os.environ.get('STYLE_CHANGED') == 'true' or os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
+              tracked = subprocess.check_output(['git', 'ls-files', '-z', '--', '32blit-linux/'])
+              paths = [part.decode('utf-8') for part in tracked.split(b'\0') if part]
+          else:
+              paths = json.loads(os.environ.get('FORMAT_FILES_JSON') or '[]')
+
+          files = sorted({p for p in paths
+                          if isinstance(p, str)
+                          and p.startswith('32blit-linux/')
+                          and p.endswith(extensions)
+                          and Path(p).is_file()})
+          if not files:
+              print('No modified C/C++ files need formatting checks.')
+          else:
+              print(f'Checking {len(files)} file(s) against 32blit-linux/.clang-format')
+              subprocess.run(['clang-format', '--style=file', '--dry-run', '--Werror', *files], check=True)
+          PY
+
+  tests:
+    name: Unit tests (ASan + UBSan)
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.changes.outputs.tests == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .github/ci-requirements.txt
+      - name: Install tools
+        run: |
+          python -m pip install -r .github/ci-requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build g++ ccache
+      - uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ccache-tests-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-tests-${{ runner.os }}-
+      - name: Verify prerequisites
+        run: |
+          test -f CMakePresets.json
+          test -f 32blit-linux/tests/CMakeLists.txt
+          cmake --version | head -1
+      - name: Configure, build and test
+        run: cmake --workflow --preset port-asan
+      - name: Compiler cache stats
+        if: always()
+        run: ccache --show-stats
+      - name: Upload failing CTest log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sps-ctest-log
+          path: build/port-asan/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  build:
+    name: Port + examples (Release)
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.changes.outputs.build == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: 32blit/32blit-examples
+          path: examples
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .github/ci-requirements.txt
+      - name: Install tools
+        run: |
+          python -m pip install -r .github/ci-requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build g++ ccache
+      - uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ccache-build-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-build-${{ runner.os }}-
+      - name: Verify prerequisites
+        run: |
+          test -f CMakePresets.json
+          test -f examples/CMakeLists.txt
+      - name: Configure and build
+        run: cmake --workflow --preset port-release
+      - name: Compiler cache stats
+        if: always()
+        run: ccache --show-stats
+
+  docs:
+    name: Docs (Doxygen)
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.changes.outputs.docs == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends doxygen
+      - name: Generate HTML documentation
+        run: |
+          test -f 32blit-linux/Doxyfile
+          mkdir -p build/docs
+          doxygen 32blit-linux/Doxyfile
+          test -f build/docs/html/index.html
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: build/docs/html
+          if-no-files-found: error
+          retention-days: 14
