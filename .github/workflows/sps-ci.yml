@@ -134,7 +134,7 @@ jobs:
               raise SystemExit('Missing team style: 32blit-linux/.clang-format')
 
           extensions = ('.cpp', '.hpp', '.c', '.h')
-          if os.environ.get('STYLE_CHANGED') == 'true' or os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
+          if os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch':
               tracked = subprocess.check_output(['git', 'ls-files', '-z', '--', '32blit-linux/'])
               paths = [part.decode('utf-8') for part in tracked.split(b'\0') if part]
           else:
