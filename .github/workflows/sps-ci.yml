@@ -1,3 +1,99 @@
+# SPS Linux-port CI. Lives alongside the upstream workflows; does not replace them.
+# Jobs only run when the related files change. Build/test jobs still compile and
+# test the affected component as a whole, not just the changed source file.
+name: SPS CI
+
+on:
+  push:
+    branches: [master, linux-port]
+  pull_request:
+  workflow_dispatch:
+
+# paths-filter reads the list of changed files on pull requests.
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: sps-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  CMAKE_BUILD_PARALLEL_LEVEL: '2'
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 500M
+
+jobs:
+  # Runs first; all other jobs use its results to avoid unrelated work.
+  changes:
+    name: Find changed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      format_sources: ${{ steps.filter.outputs.format_sources }}
+      format_files: ${{ steps.filter.outputs.format_sources_files }}
+      format_config: ${{ steps.filter.outputs.format_config }}
+      tests: ${{ steps.filter.outputs.tests }}
+      build: ${{ steps.filter.outputs.build }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Find relevant changes
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          # Pushes compare to the pre-push commit; PRs compare to their base.
+          base: ${{ github.event.before || github.ref_name }}
+          list-files: json
+          predicate-quantifier: some-with-excludes
+          filters: |
+            # Only existing, added/modified C++ source should be formatted.
+            format_sources:
+              - added|modified: '32blit-linux/**/*.cpp'
+              - added|modified: '32blit-linux/**/*.hpp'
+              - added|modified: '32blit-linux/**/*.c'
+              - added|modified: '32blit-linux/**/*.h'
+            # If the style changes, recheck all tracked C/C++ source files.
+            format_config:
+              - '32blit-linux/.clang-format'
+            # Tests include port code, test files, and shared SDK dependencies.
+            tests:
+              - '32blit-linux/**'
+              - '!32blit-linux/Doxyfile'
+              - '!32blit-linux/.clang-format'
+              - '!32blit-linux/**/*.md'
+              - '32blit/**'
+              - '3rd-party/**'
+              - 'launcher-shared/**'
+              - 'utilities/**'
+              - '32blit-config.cmake'
+              - 'CMakeLists.txt'
+              - 'CMakePresets.json'
+              - '.github/ci-requirements.txt'
+              - '.github/workflows/sps-ci.yml'
+            # Changes to unit tests alone do not require building every example.
+            build:
+              - '32blit-linux/**'
+              - '!32blit-linux/tests/**'
+              - '!32blit-linux/Doxyfile'
+              - '!32blit-linux/.clang-format'
+              - '!32blit-linux/**/*.md'
+              - '32blit/**'
+              - '3rd-party/**'
+              - 'launcher-shared/**'
+              - 'utilities/**'
+              - '32blit-config.cmake'
+              - 'CMakeLists.txt'
+              - 'CMakePresets.json'
+              - '.github/ci-requirements.txt'
+              - '.github/workflows/sps-ci.yml'
+            docs:
+              - '32blit-linux/**'
               - '!32blit-linux/tests/**'
               - '!32blit-linux/.clang-format'
               - '32blit-linux/Doxyfile'
