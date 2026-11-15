@@ -1,0 +1,28 @@
+# Doxygen settings for the 32blit-linux port. Run from the repository root:
+#   doxygen 32blit-linux/Doxyfile
+# Output: build/docs/html/index.html
+# Only settings that differ from Doxygen's defaults are listed.
+
+PROJECT_NAME           = "32blit-linux"
+PROJECT_BRIEF          = "SPS port of the 32blit SDK to embedded Linux (T113 handheld)"
+OUTPUT_DIRECTORY       = build/docs
+
+INPUT                  = 32blit-linux
+FILE_PATTERNS          = *.hpp *.cpp
+RECURSIVE              = YES
+EXCLUDE                = 32blit-linux/tests
+
+# The port documents its internal helpers too (anonymous namespaces, statics).
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+EXTRACT_ANON_NSPACES   = YES
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+SOURCE_BROWSER         = YES
+
+# Fail the CI job on broken docs (wrong \param names, bad commands),
+# not on missing comments.
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
